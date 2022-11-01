@@ -1,12 +1,16 @@
-#include "tgaimage.hpp"
 #include <cstdlib>
+#include <iostream>
+
+#include "model.hpp"
+#include "tgaimage.hpp"
 
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red = TGAColor(255, 0, 0, 255);
 
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color)
 {
-
+    // Maybe linear interpolation would work on this
+    // At least is a shorter code for a line
     bool steep = false;
     if (std::abs(x0 - x1) < std::abs(y0 - y1))
     {
@@ -43,18 +47,37 @@ void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color)
     }
 }
 
+void meshRender(const char *filename, TGAImage &image)
+{
+    int width = image.width();
+    int height = image.height();
+
+    Model model = Model(filename);
+    for (int i = 0; i < model.nfaces(); i++)
+    {
+        std::vector<int> face = model.face(i);
+        // this'll get the 2 vertices to draw a line
+        // but why does it need the +1?
+        for (int j = 0; j < 3; j++)
+        {
+            Vec3f v0 = model.vert(face[j]);
+            Vec3f v1 = model.vert(face[(j + 1) % 3]);
+
+            int x0 = (v0.x + 1) * width / 2;
+            int x1 = (v1.x + 1) * width / 2;
+
+            int y0 = (v0.y + 1) * height / 2;
+            int y1 = (v1.y + 1) * height / 2;
+
+            line(x0, y0, x1, y1, image, white);
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
-    int imgWidth = 500;
-    int imgHeight = 500;
-
-    TGAImage image(imgHeight, imgWidth, TGAImage::RGB);
-
-    line(0, 0, 200, 200, image, red);
-    line(0, 200, 500, 200, image, red);
-    line(0, 400, 500, 0, image, red);
-    image.flip_vertically();
-
+    TGAImage image(500, 500, TGAImage::RGB);
+    meshRender("african_head.obj", image);
     image.write_tga_file("output.tga");
     return 0;
 }
