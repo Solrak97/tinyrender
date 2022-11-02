@@ -60,8 +60,8 @@ void mesh(const char *filename, TGAImage &image)
         // this'll get the 2 vertices to draw a line
         // but why does it need the +1?
 
-        //On the .obj file, space is defined between -1 and 1
-        //As we deal only on positive integers the +1 centers the data
+        // On the .obj file, space is defined between -1 and 1
+        // As we deal only on positive integers the +1 centers the data
         for (int j = 0; j < 3; j++)
         {
             Vec3f v0 = model.vert(face[j]);
@@ -80,13 +80,17 @@ void mesh(const char *filename, TGAImage &image)
 
 Vec3f barycentric(Vec2i *tri, Vec2i P)
 {
-    //Remember ^ as cross product operator!
-    // u = (AC0, AB0, PA0) X (AC1, AB1, PA1)
-    // => u orthogonal to both vectors
+    // Remember ^ as cross product operator!
+    //  u = (AC0, AB0, PA0) X (AC1, AB1, PA1)
+    //  => u orthogonal to both vectors
     Vec3f u = Vec3f{tri[2].x - tri[0].x, tri[1].x - tri[0].x, tri[0].x - P.x} ^
               Vec3f { tri[2].x - tri[0].x, tri[1].x - tri[0].x, tri[0].x - P.x };
-    
 
+    if (std::abs(u.z < 1))
+        return Vec3f(-1, 1, 1);
+
+    // (x, y) -> (1 − u − v, u, v)
+    return Vec3f { 1.f - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z };
 }
 
 void triangle(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color)

@@ -14,7 +14,7 @@ The tinyrender is a project  based on the material from https://github.com/ssloy
      v -0.201076 -0.720822 -0.633205 
      ```
 
-    Vector coordinates are defined as a float in the range [-1, 1], those points must be scaled to fit on the screen or image, but the target only deals in positive num,bers, so before scaling the point it must be transformed to a positive scale, adding +1 to the original point will 'center' the point to the range [0, 2].
+    Vector coordinates are defined as a float in the range [-1, 1], those points must be scaled to fit on the screen or image, but the target only works with positive numbers, before scaling the point it must be transformed to a positive scale, adding +1 to the original point "centers" the point to the range [0, 2].
     
     ```c++
     model.vert(face[j]).x + 1) * width / 2;
