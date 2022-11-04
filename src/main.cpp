@@ -48,12 +48,11 @@ void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color)
     }
 }
 
-void mesh(const char *filename, TGAImage &image)
+void drawWireframe(Model &model, TGAImage &image)
 {
     int width = image.width();
     int height = image.height();
 
-    Model model = Model(filename);
     for (int i = 0; i < model.nfaces(); i++)
     {
         std::vector<int> face = model.face(i);
@@ -83,76 +82,105 @@ Vec3f barycentric(Vec2i *tri, Vec2i P)
     // Remember ^ as cross product operator!
     //  u = (AC0, AB0, PA0) X (AC1, AB1, PA1)
     //  => u orthogonal to both vectors
-    Vec3f u = Vec3f{tri[2].x - tri[0].x, tri[1].x - tri[0].x, tri[0].x - P.x} ^
-              Vec3f { tri[2].x - tri[0].x, tri[1].x - tri[0].x, tri[0].x - P.x };
+    Vec3f u = (Vec3f{(float)(tri[2].x - tri[0].x),
+                     (float)(tri[1].x - tri[0].x),
+                     (float)(tri[0].x - P.x)} ^
+               Vec3f{(float)(tri[2].y - tri[0].y),
+                     (float)(tri[1].y - tri[0].y),
+                     (float)(tri[0].y - P.y)});
 
+    /*
     if (std::abs(u.z < 1))
         return Vec3f(-1, 1, 1);
-
+    */
+   
     // (x, y) -> (1 − u − v, u, v)
-    return Vec3f { 1.f - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z };
+    return Vec3f{1.f - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z};
 }
 
-void triangle(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color)
+void triangle(Vec2i *pts, TGAImage &image, TGAColor color)
 {
-    if (t0.y == t1.y && t0.y == t2.y)
-        return; // I dont care about degenerate triangles
-    // that explains kinda a lot
+    Vec2i bboxmin(image.width() - 1, image.height() - 1);
+    Vec2i bboxmax(0, 0);
+    Vec2i clamp(image.width() - 1, image.height() - 1);
 
-    if (t0.y > t1.y)
-        std::swap(t0, t1);
-    if (t0.y > t2.y)
-        std::swap(t0, t2);
-    if (t1.y > t2.y)
-        std::swap(t1, t2);
-    int total_height = t2.y - t0.y;
-    for (int i = 0; i < total_height; i++)
+    for (int i = 0; i < 3; i++)
     {
-        bool second_half = i > t1.y - t0.y || t1.y == t0.y;
-        int segment_height = second_half ? t2.y - t1.y : t1.y - t0.y;
-        float alpha = (float)i / total_height;
-        float beta = (float)(i - (second_half ? t1.y - t0.y : 0)) / segment_height; // be careful: with above conditions no division by zero here
-        Vec2i A = t0 + (t2 - t0) * alpha;
-        Vec2i B = second_half ? t1 + (t2 - t1) * beta : t0 + (t1 - t0) * beta;
+        bboxmin.x = std::max(0, std::min(bboxmin.x, pts[i].x));
+        bboxmin.y = std::max(0, std::min(bboxmin.y, pts[i].y));
 
-        // Axis swap, always draw left to right
-        if (A.x > B.x)
-            std::swap(A, B);
-        for (int j = A.x; j <= B.x; j++)
+        bboxmax.x = std::min(clamp.x, std::max(bboxmax.x, pts[i].x));
+        bboxmax.y = std::min(clamp.y, std::max(bboxmax.y, pts[i].y));
+    }
+
+    // Lets draw the bounding box
+    /*
+    line(bboxmin.x, bboxmin.y, bboxmin.x, bboxmax.y, image, green);
+    line(bboxmin.x, bboxmax.y, bboxmax.x, bboxmax.y, image, green);
+    line(bboxmax.x, bboxmax.y, bboxmax.x, bboxmin.y, image, green);
+    line(bboxmin.x, bboxmin.y, bboxmax.x, bboxmin.y, image, green);
+
+    std::cout << "BBoxmax = <" << bboxmax.x << ", " << bboxmax.y << ">" << std::endl;
+    std::cout << "BBoxmin = <" << bboxmin.x << ", " << bboxmin.y << ">" << std::endl;
+    */
+
+    // This works pretty good using bounding boxes
+    // drawing the box was an interesting way to visualize
+    // how it reduces the drawing workload
+
+    Vec2i P;
+    for (P.x = bboxmin.x; P.x <= bboxmax.x; P.x++)
+    {
+        for (P.y = bboxmin.y; P.y <= bboxmax.y; P.y++)
         {
-            image.set(j, t0.y + i, color); // attention, due to int casts t0.y+i != A.y
+            Vec3f bc_screen = barycentric(pts, P);
+            if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
+                continue;
+            image.set(P.x, P.y, color);
         }
     }
 }
 
-void filledMesh(const char *filename, TGAImage &image)
+void drawMesh(Model &model, TGAImage &image)
 {
     int width = image.width();
     int height = image.height();
 
-    Model model = Model(filename);
+    Vec3f light_dir{0, 0, -1};
+
     for (int i = 0; i < model.nfaces(); i++)
     {
         std::vector<int> face = model.face(i);
-
-        Vec2i pts[3];
+        Vec2i screen_coords[3];
+        Vec3f world_coords[3];
 
         for (int j = 0; j < 3; j++)
         {
-            pts[j] = Vec2i{
-                (int)((model.vert(face[j]).x + 1) * width / 2),
-                (int)((model.vert(face[j]).y + 1) * height / 2)};
+            Vec3f v = model.vert(face[j]);
+            screen_coords[j] = Vec2i((v.x + 1.) * width / 2., (v.y + 1.) * height / 2);
+            world_coords[j] = v;
         }
 
-        triangle(pts[0], pts[1], pts[2], image, white);
+        // N = AB ^ AC
+        Vec3f n{world_coords[2] - world_coords[0] ^ world_coords[1] - world_coords[0]};
+        n.normalize();
+
+        float intensity = n * light_dir;
+        if (intensity > 0)
+        {
+            triangle(screen_coords, image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255));
+        }
     }
 }
 
 int main(int argc, char **argv)
 {
     TGAImage image(500, 500, TGAImage::RGB);
-    // mesh("african_head.obj", image);
-    filledMesh("african_head.obj", image);
+    Model model = Model("african_head.obj");
+
+    // drawWireframe(model, image);
+    drawMesh(model, image);
     image.write_tga_file("output.tga");
+
     return 0;
 }
