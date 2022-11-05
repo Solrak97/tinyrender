@@ -7,6 +7,7 @@
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red = TGAColor(255, 0, 0, 255);
 const TGAColor green = TGAColor(0, 255, 0, 255);
+const TGAColor blue = TGAColor(0, 0, 255, 255);
 
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color)
 {
@@ -93,7 +94,7 @@ Vec3f barycentric(Vec2i *tri, Vec2i P)
     if (std::abs(u.z < 1))
         return Vec3f(-1, 1, 1);
     */
-   
+
     // (x, y) -> (1 − u − v, u, v)
     return Vec3f{1.f - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z};
 }
@@ -173,7 +174,7 @@ void drawMesh(Model &model, TGAImage &image)
     }
 }
 
-int main(int argc, char **argv)
+void meshTest()
 {
     TGAImage image(500, 500, TGAImage::RGB);
     Model model = Model("african_head.obj");
@@ -181,6 +182,30 @@ int main(int argc, char **argv)
     // drawWireframe(model, image);
     drawMesh(model, image);
     image.write_tga_file("output.tga");
+}
 
+void sceneTest()
+{ // just dumping the 2d scene (yay we have enough dimensions!)
+
+    int width, height;
+    width = height = 1000;
+    TGAImage scene(width, height, TGAImage::RGB);
+
+    // scene "2d mesh"
+    line(20, 34, 744, 400, scene, red);
+    line(120, 434, 444, 400, scene, green);
+    line(330, 463, 594, 200, scene, blue);
+
+    // screen line
+    line(10, 10, 790, 10, scene, white);
+
+    scene.flip_vertically(); // i want to have the origin at the left bottom corner of the image
+    scene.write_tga_file("scene.tga");
+}
+
+int main(int argc, char **argv)
+{
+    // meshTest();
+    sceneTest();
     return 0;
 }
