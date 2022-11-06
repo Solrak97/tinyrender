@@ -49,7 +49,7 @@ void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color)
     }
 }
 
-void drawWireframe(Model &model, TGAImage &image)
+void wireframe(Model &model, TGAImage &image)
 {
     int width = image.width();
     int height = image.height();
@@ -78,58 +78,41 @@ void drawWireframe(Model &model, TGAImage &image)
     }
 }
 
-Vec3f barycentric(Vec2i *tri, Vec2i P)
+Vec3f barycentric(Vec2i *tri, Vec3f P)
 {
-    // Remember ^ as cross product operator!
-    //  u = (AC0, AB0, PA0) X (AC1, AB1, PA1)
-    //  => u orthogonal to both vectors
-    Vec3f u = (Vec3f{(float)(tri[2].x - tri[0].x),
-                     (float)(tri[1].x - tri[0].x),
-                     (float)(tri[0].x - P.x)} ^
-               Vec3f{(float)(tri[2].y - tri[0].y),
-                     (float)(tri[1].y - tri[0].y),
-                     (float)(tri[0].y - P.y)});
+    Vec3f s[2];
+    s[0].x = tri[2].x - tri[0].x;
+    s[0].y = tri[1].x - tri[0].x;
+    s[0].z = tri[0].x - P.x;
+    s[1].x = tri[2].y - tri[0].y;
+    s[1].y = tri[1].y - tri[0].y;
+    s[1].z = tri[0].y - P.y;
 
-    /*
-    if (std::abs(u.z < 1))
-        return Vec3f(-1, 1, 1);
-    */
-
-    // (x, y) -> (1 − u − v, u, v)
-    return Vec3f{1.f - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z};
+    Vec3f u = s[0] ^ s[1];
+    if (std::abs(u.z) > 1e-2)
+        return Vec3f(1.f - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z);
+    return Vec3f(-1, 1, 1);
 }
 
-void triangle(Vec2i *pts, TGAImage &image, TGAColor color)
+void triangle(Vec2i *pts, TGAImage &image, float *zBuffer, TGAColor color)
 {
-    Vec2i bboxmin(image.width() - 1, image.height() - 1);
-    Vec2i bboxmax(0, 0);
-    Vec2i clamp(image.width() - 1, image.height() - 1);
+    int height = image.height();
+    int width = image.width();
+
+    Vec2f bboxmin{std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+    Vec2f bboxmax{-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max()};
+    Vec2f clamp(width - 1, height - 1);
 
     for (int i = 0; i < 3; i++)
     {
-        bboxmin.x = std::max(0, std::min(bboxmin.x, pts[i].x));
-        bboxmin.y = std::max(0, std::min(bboxmin.y, pts[i].y));
+        bboxmin.x = std::max(0.f, std::min(bboxmin.x, (float)pts[i].x));
+        bboxmin.y = std::max(0.f, std::min(bboxmin.y, (float)pts[i].y));
 
-        bboxmax.x = std::min(clamp.x, std::max(bboxmax.x, pts[i].x));
-        bboxmax.y = std::min(clamp.y, std::max(bboxmax.y, pts[i].y));
+        bboxmax.x = std::min(clamp.x, std::max(bboxmax.x, (float)pts[i].x));
+        bboxmax.y = std::min(clamp.y, std::max(bboxmax.y, (float)pts[i].y));
     }
 
-    // Lets draw the bounding box
-    /*
-    line(bboxmin.x, bboxmin.y, bboxmin.x, bboxmax.y, image, green);
-    line(bboxmin.x, bboxmax.y, bboxmax.x, bboxmax.y, image, green);
-    line(bboxmax.x, bboxmax.y, bboxmax.x, bboxmin.y, image, green);
-    line(bboxmin.x, bboxmin.y, bboxmax.x, bboxmin.y, image, green);
-
-    std::cout << "BBoxmax = <" << bboxmax.x << ", " << bboxmax.y << ">" << std::endl;
-    std::cout << "BBoxmin = <" << bboxmin.x << ", " << bboxmin.y << ">" << std::endl;
-    */
-
-    // This works pretty good using bounding boxes
-    // drawing the box was an interesting way to visualize
-    // how it reduces the drawing workload
-
-    Vec2i P;
+    Vec3f P;
     for (P.x = bboxmin.x; P.x <= bboxmax.x; P.x++)
     {
         for (P.y = bboxmin.y; P.y <= bboxmax.y; P.y++)
@@ -137,16 +120,31 @@ void triangle(Vec2i *pts, TGAImage &image, TGAColor color)
             Vec3f bc_screen = barycentric(pts, P);
             if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
                 continue;
-            image.set(P.x, P.y, color);
+            P.z = 0;
+            P.z = 0;
+
+            //... i need a way to [] into vectors!!!
+            // so ill just map it to an array atm
+
+            float bc_screen_map[3] = {bc_screen.x, bc_screen.y, bc_screen.z};
+            for (int i = 0; i < 3; i++)
+                P.z += pts[i].y * bc_screen_map[i];
+            if (zBuffer[int(P.x + P.y * width)] < P.z)
+            {
+                zBuffer[int(P.x + P.y * width)] = P.z;
+                image.set(P.x, P.y, color);
+            }
         }
     }
 }
 
-void drawMesh(Model &model, TGAImage &image)
+void rasterize(Model &model, TGAImage &display)
 {
-    int width = image.width();
-    int height = image.height();
-
+    int width = display.width();
+    int height = display.height();
+    int zBufferSize = width * height;
+    float *zBuffer = new float[zBufferSize];
+    std::fill_n(zBuffer, zBufferSize, std::numeric_limits<int>::min());
     Vec3f light_dir{0, 0, -1};
 
     for (int i = 0; i < model.nfaces(); i++)
@@ -169,9 +167,13 @@ void drawMesh(Model &model, TGAImage &image)
         float intensity = n * light_dir;
         if (intensity > 0)
         {
-            triangle(screen_coords, image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255));
+            triangle(screen_coords, display, zBuffer, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255));
         }
     }
+
+    // deleting the buffer after rasterizing
+    // we dont want memory leaks, dont we?
+    delete zBuffer;
 }
 
 void meshTest()
@@ -180,32 +182,12 @@ void meshTest()
     Model model = Model("african_head.obj");
 
     // drawWireframe(model, image);
-    drawMesh(model, image);
+    rasterize(model, image);
     image.write_tga_file("output.tga");
-}
-
-void sceneTest()
-{ // just dumping the 2d scene (yay we have enough dimensions!)
-
-    int width, height;
-    width = height = 1000;
-    TGAImage scene(width, height, TGAImage::RGB);
-
-    // scene "2d mesh"
-    line(20, 34, 744, 400, scene, red);
-    line(120, 434, 444, 400, scene, green);
-    line(330, 463, 594, 200, scene, blue);
-
-    // screen line
-    line(10, 10, 790, 10, scene, white);
-
-    scene.flip_vertically(); // i want to have the origin at the left bottom corner of the image
-    scene.write_tga_file("scene.tga");
 }
 
 int main(int argc, char **argv)
 {
-    // meshTest();
-    sceneTest();
+    meshTest();
     return 0;
 }
