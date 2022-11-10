@@ -151,7 +151,42 @@ void Rasterizer::renderMesh(Model &model, TGAImage &display)
         }
     }
 
-    // deleting the buffer after rasterizing
-    // we dont want memory leaks, dont we?
+    delete zBuffer;
+}
+
+void Renderizer::renderMesh(Model &model, TGAImage &texture, TGAImage &display)
+{
+
+    int width = display.width();
+    int height = display.height();
+    int zBufferSize = width * height;
+    float *zBuffer = new float[zBufferSize];
+    std::fill_n(zBuffer, zBufferSize, std::numeric_limits<int>::min());
+    Vec3f light_dir{0, 0, -1};
+
+    for (int i = 0; i < model.nfaces(); i++)
+    {
+        std::vector<int> face = model.face(i);
+        Vec2i screen_coords[3];
+        Vec3f world_coords[3];
+
+        for (int j = 0; j < 3; j++)
+        {
+            Vec3f v = model.vert(face[j]);
+            screen_coords[j] = Vec2i((v.x + 1.) * width / 2., (v.y + 1.) * height / 2);
+            world_coords[j] = v;
+        }
+
+        // N = AB ^ AC
+        Vec3f n{world_coords[2] - world_coords[0] ^ world_coords[1] - world_coords[0]};
+        n.normalize();
+
+        float intensity = n * light_dir;
+        if (intensity > 0)
+        {
+            Rasterizer::triangle(screen_coords, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255), zBuffer, display);
+        }
+    }
+
     delete zBuffer;
 }

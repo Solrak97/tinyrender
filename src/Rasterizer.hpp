@@ -7,6 +7,9 @@
 
 namespace Rasterizer
 {
+    // Basic RGB colors + black and white
+    // those are common colors, everything
+    // else can be createn on TGAColor(R, G, B, Alpha); 
     const TGAColor white = TGAColor(255, 255, 255, 255);
     const TGAColor black = TGAColor(0, 0, 0, 255);
     const TGAColor red = TGAColor(255, 0, 0, 255);
@@ -23,6 +26,7 @@ namespace Rasterizer
     // Complex models
     void renderWireframe(Model model, TGAImage &display);
     void renderMesh(Model &model, TGAImage &display);
+    void renderMesh(Model &model, TGAImage &texture, TGAImage &display);
 }
 
 #endif
